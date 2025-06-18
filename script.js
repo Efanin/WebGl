@@ -1,107 +1,114 @@
-import * as THREE from 'three'
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 const initScene = () => {
-    const scene = new THREE.Scene()
-    const ambientLight = new THREE.AmbientLight("#000000")
-    scene.add(ambientLight)
-    const directionalLight = new THREE.DirectionalLight("#ffffff", 1)
-    directionalLight.position.set(1, 1, 1)
-    scene.add(directionalLight)
+ const scene = new THREE.Scene();
+  
+  // Добавляем освещение для зеркальных эффектов
+  const ambientLight = new THREE.AmbientLight(0x404040);
+  scene.add(ambientLight);
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(1, 1, 1);
+  scene.add(directionalLight);
+
+    
     const camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
         0.1,
         1000
-    )
-    camera.position.z = 5
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    renderer.outputEncoding = THREE.sRGBEncoding
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1
-    document.body.appendChild(renderer.domElement)
+    );
+    camera.position.z = 5;
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+    document.body.appendChild(renderer.domElement);
+    
     window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight
-        camera.updateProjectionMatrix()
-        renderer.setSize(window.innerWidth, window.innerHeight)
-    })
-    return { scene, camera, renderer }
-}
-
-const prefab = () => {
-    const group = new THREE.Group()
-
-    const sphere1 = new THREE.Mesh(
-        new THREE.SphereGeometry(1.0, 32, 32),
-        new THREE.MeshStandardMaterial({ 
-        color: "#ddddff",
-        emissive: "#4444ff",
-        shininess: 100
-    }))
-    sphere1.position.set(0, 3, 0)
-
-    const cube1 = new THREE.Mesh(
-        new THREE.BoxGeometry(2,2,2),
-        new THREE.MeshStandardMaterial({ 
-        color: "#ffddff",
-        emissive: "#4444ff",
-        shininess: 100
-    }))
-    cube1.position.set(0, 0, 0)
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    return { scene, camera, renderer };
+};
 
 
-    group.add(sphere1,cube1)
-
-    return group
-}
-
+const loadGLTFModel = (scene, modelPath) => {
+    // Создаем индикатор загрузки
+    const loadingElement = document.createElement('div');
+    loadingElement.style.position = 'absolute';
+    loadingElement.style.top = '20px';
+    loadingElement.style.left = '20px';
+    loadingElement.style.color = 'white';
+    loadingElement.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    loadingElement.style.padding = '10px';
+    loadingElement.style.borderRadius = '5px';
+    loadingElement.textContent = 'Loading model...';
+    document.body.appendChild(loadingElement);
+    
+    const loader = new GLTFLoader();
+    
+    loader.load(
+        modelPath,
+        (gltf) => {
+            scene.add(gltf.scene);
+            loadingElement.textContent = 'Model loaded successfully!';
+            setTimeout(() => {
+                document.body.removeChild(loadingElement);
+            }, 2000);
+            
+            // Центрируем модель
+            const box = new THREE.Box3().setFromObject(gltf.scene);
+            const center = box.getCenter(new THREE.Vector3());
+            gltf.scene.position.sub(center);
+        },
+        (xhr) => {
+            // Прогресс загрузки
+            const percentLoaded = (xhr.loaded / xhr.total * 100).toFixed(2);
+            loadingElement.textContent = `Loading ${percentLoaded}%`;
+        },
+        (error) => {
+            console.error('Error loading GLTF model:', error);
+            loadingElement.textContent = 'Failed to load model!';
+            setTimeout(() => {
+                document.body.removeChild(loadingElement);
+            }, 3000);
+        }
+    );
+};
 
 const main = () => {
-    const { scene, camera, renderer } = initScene()
+    const { scene, camera, renderer } = initScene();
+    const envTexture = new THREE.CubeTextureLoader()
+        .setPath('https://threejs.org/examples/textures/cube/pisa/')
+        .load(['px.png', 'nx.png', 'py.png', 'ny.png', 'pz.png', 'nz.png']);
+    envTexture.encoding = THREE.sRGBEncoding;
+    scene.background = envTexture;
+    scene.environment = envTexture;
 
-    const prefab1 = prefab()
-    scene.add(prefab1)
 
-    let isDragging = false
-    let previousMousePosition = { x: 0, y: 0 }
-    let rotationSpeed = 0.02
-
-    renderer.domElement.addEventListener('mousedown', (e) => {
-        isDragging = true
-        previousMousePosition = { 
-        x: e.clientX, 
-        y: e.clientY 
-        }
-    })
-
-    renderer.domElement.addEventListener('mousemove', (e) => {
-        if (!isDragging) return
-        
-        const deltaMove = {
-        x: e.clientX - previousMousePosition.x,
-        y: e.clientY - previousMousePosition.y
-        }
-        prefab1.rotation.z += deltaMove.x * rotationSpeed
-        prefab1.rotation.x += deltaMove.y * rotationSpeed
-        previousMousePosition = {
-        x: e.clientX,
-        y: e.clientY
-        }
-    })
-
-    renderer.domElement.addEventListener('mouseup', () => {
-        isDragging = false
-    })
-
-    renderer.domElement.addEventListener('mouseleave', () => {
-        isDragging = false
-    })
-
+    // Добавляем OrbitControls для удобного просмотра
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    
+    // Загружаем GLTF модель (укажите правильный путь)
+    loadGLTFModel(scene, './car-peugeot_206/scene.gltf');
+    
+    
+    
     const animate = () => {
-        requestAnimationFrame(animate)
-        renderer.render(scene, camera)
-    }
-    animate()
-}
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    };
+    animate();
+};
 
-main()
+main();
